@@ -1,0 +1,6 @@
+[package]
+name = "reudh"
+version = "0.1.0"
+authors = ["Ben Weedon <ben.weedon@outlook.com>"]
+
+[dependencies]
