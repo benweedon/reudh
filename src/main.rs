@@ -16,6 +16,8 @@ use hyper_tls::HttpsConnector;
 use tokio_core::reactor::Core;
 
 fn main() {
+    println!("Version {}\n", env!("CARGO_PKG_VERSION"));
+
     let mut core = Core::new().unwrap();
     let handle = core.handle();
     let client = Client::configure()
