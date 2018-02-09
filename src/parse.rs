@@ -17,8 +17,9 @@ pub fn index_site(client: HttpsClient, mut core: Core) -> Result<Vec<String>, Er
         .chars()
         .map(|l| format!("https://www.etymonline.com/search?q={}", l));
     for url in letter_urls {
-        get_dom(url, &client, &mut core)?;
-        println!("hi");
+        let document = get_dom(url, &client, &mut core)?;
+        let title = document.select_first("title")?.text_contents();
+        println!("{}", title);
     }
     Ok(vec![])
 }

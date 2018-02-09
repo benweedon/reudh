@@ -5,13 +5,19 @@ use hyper;
 use hyper::error::UriError;
 
 #[derive(Debug)]
-pub enum Error {
-    Err,
+pub struct Error {
+    s: String,
+}
+
+impl Error {
+    pub fn new(s: &str) -> Error {
+        Error { s: From::from(s) }
+    }
 }
 
 impl error::Error for Error {
     fn description(&self) -> &str {
-        "This is an error"
+        self.s.as_str()
     }
 
     fn cause(&self) -> Option<&error::Error> {
@@ -21,24 +27,30 @@ impl error::Error for Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "This is an error")
+        write!(f, "{}", error::Error::description(self))
     }
 }
 
 impl From<()> for Error {
     fn from(_: ()) -> Error {
-        Error::Err
+        Error {
+            s: From::from("Unknown error"),
+        }
     }
 }
 
 impl From<UriError> for Error {
-    fn from(_: UriError) -> Error {
-        Error::Err
+    fn from(err: UriError) -> Error {
+        Error {
+            s: From::from(error::Error::description(&err)),
+        }
     }
 }
 
 impl From<hyper::Error> for Error {
-    fn from(_: hyper::Error) -> Error {
-        Error::Err
+    fn from(err: hyper::Error) -> Error {
+        Error {
+            s: From::from(error::Error::description(&err)),
+        }
     }
 }
