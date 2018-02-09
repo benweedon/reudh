@@ -3,6 +3,7 @@ extern crate html5ever;
 extern crate hyper;
 extern crate hyper_tls;
 extern crate kuchiki;
+extern crate native_tls;
 extern crate tokio_core;
 
 mod errors;
@@ -10,20 +11,21 @@ mod parse;
 
 use errors::Error;
 
-use hyper::Client;
-use hyper_tls::HttpsConnector;
-use tokio_core::reactor::Core;
+pub fn fetch() -> Result<(), Error> {
+    const LETTERS: &'static str = "abcdefghijklmnopqrstuvwxyz";
 
-pub fn crawl() -> Result<(), Error> {
-    let core = Core::new().unwrap();
-    let handle = core.handle();
-    let client = Client::configure()
-        .connector(HttpsConnector::new(4, &handle).unwrap())
-        .build(&handle);
+    let letter_urls = LETTERS
+        .chars()
+        .map(|l| format!("https://www.etymonline.com/search?q={}", l));
 
-    let pages = parse::index_site(client, core)?;
-    for page in pages {
-        println!("{}", page);
+    let mut etyms = vec![];
+    for url in letter_urls {
+        let e = parse::etyms_from_letter_url(url)?;
+        etyms.extend(e);
+    }
+
+    for etym in etyms {
+        println!("{}\n---------------------\n\n", etym);
     }
     Ok(())
 }

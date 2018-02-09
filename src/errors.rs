@@ -1,8 +1,10 @@
 use std::error;
 use std::fmt;
+use std::io;
 
 use hyper;
 use hyper::error::UriError;
+use native_tls;
 
 #[derive(Debug)]
 pub struct Error {
@@ -49,6 +51,22 @@ impl From<UriError> for Error {
 
 impl From<hyper::Error> for Error {
     fn from(err: hyper::Error) -> Error {
+        Error {
+            s: From::from(error::Error::description(&err)),
+        }
+    }
+}
+
+impl From<io::Error> for Error {
+    fn from(err: io::Error) -> Error {
+        Error {
+            s: From::from(error::Error::description(&err)),
+        }
+    }
+}
+
+impl From<native_tls::Error> for Error {
+    fn from(err: native_tls::Error) -> Error {
         Error {
             s: From::from(error::Error::description(&err)),
         }

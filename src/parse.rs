@@ -1,3 +1,5 @@
+use std::fmt;
+
 use errors::Error;
 
 use futures::{Future, Stream};
@@ -10,28 +12,22 @@ use tokio_core::reactor::Core;
 
 type HttpsClient = Client<HttpsConnector<HttpConnector>, Body>;
 
-pub fn index_site(client: HttpsClient, mut core: Core) -> Result<Vec<String>, Error> {
-    const LETTERS: &'static str = "abcdefghijklmnopqrstuvwxyz";
-
-    let letter_urls = LETTERS
-        .chars()
-        .map(|l| format!("https://www.etymonline.com/search?q={}", l));
-
-    let mut word_pages = vec![];
-    for url in letter_urls {
-        let pages = find_pages_from_letter_url(url, &client, &mut core)?;
-        word_pages.extend(pages);
-    }
-    Ok(word_pages)
+#[derive(Debug)]
+pub struct Etym {
+    word: String,
+    definition: String,
 }
 
-fn find_pages_from_letter_url(
-    url: String,
-    client: &HttpsClient,
-    mut core: &mut Core,
-) -> Result<Vec<String>, Error> {
+impl fmt::Display for Etym {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "{}\n{}", self.word, self.definition)
+    }
+}
+
+pub fn etyms_from_letter_url(url: String) -> Result<Vec<Etym>, Error> {
+    let (mut core, client) = new_core_and_client()?;
     let document = get_dom(url, &client, &mut core)?;
-    let mut pages = vec![];
+    let mut etyms = vec![];
     // Select all <a> tags with class beginning with "word--".
     let selection = document.select("a[class^=word--]")?;
     for selected in selection {
@@ -44,9 +40,24 @@ fn find_pages_from_letter_url(
             + attrs
                 .get("href")
                 .ok_or(Error::new("href attribute not found on page"))?;
-        pages.push(page)
+        let etym = etym_from_page(page, &client, &mut core)?;
+        etyms.push(etym)
     }
-    Ok(pages)
+    Ok(etyms)
+}
+
+fn etym_from_page(url: String, client: &HttpsClient, mut core: &mut Core) -> Result<Etym, Error> {
+    let document = get_dom(url, &client, &mut core)?;
+    let word = document
+        .select_first("h1[class^=word__name--]")?
+        .text_contents();
+    let definition = document
+        .select_first("section[class^=word__defination--]")?
+        .text_contents();
+    Ok(Etym {
+        word: word,
+        definition: definition,
+    })
 }
 
 fn get_dom(url: String, client: &HttpsClient, core: &mut Core) -> Result<NodeRef, Error> {
@@ -58,4 +69,14 @@ fn get_dom(url: String, client: &HttpsClient, core: &mut Core) -> Result<NodeRef
     });
     let document = core.run(work)?;
     Ok(document)
+}
+
+fn new_core_and_client() -> Result<(Core, HttpsClient), Error> {
+    let core = Core::new()?;
+    let handle = core.handle();
+    let client = Client::configure()
+        .connector(HttpsConnector::new(4, &handle)?)
+        .build(&handle);
+
+    Ok((core, client))
 }
