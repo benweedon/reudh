@@ -2,6 +2,7 @@ extern crate futures;
 extern crate html5ever;
 extern crate hyper;
 extern crate hyper_tls;
+extern crate kuchiki;
 extern crate tokio_core;
 
 mod parse;
