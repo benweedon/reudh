@@ -16,12 +16,37 @@ pub fn index_site(client: HttpsClient, mut core: Core) -> Result<Vec<String>, Er
     let letter_urls = LETTERS
         .chars()
         .map(|l| format!("https://www.etymonline.com/search?q={}", l));
+
+    let mut word_pages = vec![];
     for url in letter_urls {
-        let document = get_dom(url, &client, &mut core)?;
-        let title = document.select_first("title")?.text_contents();
-        println!("{}", title);
+        let pages = find_pages_from_letter_url(url, &client, &mut core)?;
+        word_pages.extend(pages);
     }
-    Ok(vec![])
+    Ok(word_pages)
+}
+
+fn find_pages_from_letter_url(
+    url: String,
+    client: &HttpsClient,
+    mut core: &mut Core,
+) -> Result<Vec<String>, Error> {
+    let document = get_dom(url, &client, &mut core)?;
+    let mut pages = vec![];
+    // Select all <a> tags with class beginning with "word--".
+    let selection = document.select("a[class^=word--]")?;
+    for selected in selection {
+        let elt = selected
+            .as_node()
+            .as_element()
+            .ok_or(Error::new("Link is not element"))?;
+        let attrs = elt.attributes.borrow();
+        let page = "https://www.etymonline.com".to_owned()
+            + attrs
+                .get("href")
+                .ok_or(Error::new("href attribute not found on page"))?;
+        pages.push(page)
+    }
+    Ok(pages)
 }
 
 fn get_dom(url: String, client: &HttpsClient, core: &mut Core) -> Result<NodeRef, Error> {

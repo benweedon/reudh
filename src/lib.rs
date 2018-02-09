@@ -21,6 +21,9 @@ pub fn crawl() -> Result<(), Error> {
         .connector(HttpsConnector::new(4, &handle).unwrap())
         .build(&handle);
 
-    parse::index_site(client, core)?;
+    let pages = parse::index_site(client, core)?;
+    for page in pages {
+        println!("{}", page);
+    }
     Ok(())
 }
