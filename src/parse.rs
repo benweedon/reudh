@@ -1,4 +1,4 @@
-use std::error::Error;
+use errors::Error;
 
 use futures::{Future, Stream};
 use html5ever::tendril::TendrilSink;
@@ -10,7 +10,7 @@ use tokio_core::reactor::Core;
 
 type HttpsClient = Client<HttpsConnector<HttpConnector>, Body>;
 
-pub fn index_site(client: HttpsClient, mut core: Core) -> Result<Vec<String>, Box<Error>> {
+pub fn index_site(client: HttpsClient, mut core: Core) -> Result<Vec<String>, Error> {
     const LETTERS: &'static str = "abcdefghijklmnopqrstuvwxyz";
 
     let letter_urls = LETTERS
@@ -23,7 +23,7 @@ pub fn index_site(client: HttpsClient, mut core: Core) -> Result<Vec<String>, Bo
     Ok(vec![])
 }
 
-fn get_dom(url: String, client: &HttpsClient, core: &mut Core) -> Result<NodeRef, Box<Error>> {
+fn get_dom(url: String, client: &HttpsClient, core: &mut Core) -> Result<NodeRef, Error> {
     let work = client.get(url.parse()?).and_then(|res| {
         res.body().concat2().and_then(|body| {
             let document = parse_html().from_utf8().read_from(&mut &*body)?;
