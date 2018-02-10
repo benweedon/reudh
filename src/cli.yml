@@ -1,0 +1,4 @@
+name: _
+subcommands:
+    - fetch:
+        about: Fetches etymology data from etymonline.com

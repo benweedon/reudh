@@ -14,6 +14,7 @@ travis-ci = { repository = "benweedon/reudh" }
 maintenance = { status = "actively-developed" }
 
 [dependencies]
+clap = { version = "2.29.4", features = ["yaml"] }
 futures = "0.1.18"
 html5ever = "0.22.0"
 hyper = "0.11.16"
