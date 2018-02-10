@@ -14,28 +14,21 @@ use errors::Error;
 
 use indicatif::{ProgressBar, ProgressStyle};
 
-const LETTERS: &'static str = "abcdefghijklmnopqrstuvwxyz";
-
 struct PageIter {
-    curr_letter_index: usize,
+    curr_letter: char,
 }
 impl PageIter {
     pub fn new() -> PageIter {
-        PageIter {
-            curr_letter_index: 0,
-        }
+        PageIter { curr_letter: 'a' }
     }
 }
 impl Iterator for PageIter {
     type Item = String;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.curr_letter_index < 26 {
-            let url = format!(
-                "https://www.etymonline.com/search?q={}",
-                LETTERS.as_bytes()[self.curr_letter_index] as char
-            );
-            self.curr_letter_index += 1;
+        if self.curr_letter <= 'z' {
+            let url = format!("https://www.etymonline.com/search?q={}", self.curr_letter);
+            self.curr_letter = (self.curr_letter as u8 + 1) as char;
             Some(url)
         } else {
             None
