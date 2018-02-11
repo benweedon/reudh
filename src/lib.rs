@@ -58,14 +58,15 @@ pub fn fetch(reudh_path: PathBuf) -> Result<(), Error> {
     let (page_sender, page_receiver) = chan::sync(1);
     let (bar_sender, bar_receiver) = chan::sync(1);
 
-    thread::spawn(move || {
+    let mut threads = vec![];
+    threads.push(thread::spawn(move || {
         let pages = PageIter::new();
         for url in pages {
             page_sender.send(url);
             bar.inc(1);
         }
         bar_sender.send(bar);
-    });
+    }));
 
     if !reudh_path.exists() {
         fs::create_dir(&reudh_path)?;
@@ -75,7 +76,6 @@ pub fn fetch(reudh_path: PathBuf) -> Result<(), Error> {
         fs::remove_dir_all(&*cache_path)?;
     }
     fs::create_dir(&*cache_path)?;
-    let mut threads = vec![];
     for i in 0..num_cpus::get() {
         let page_receiver = page_receiver.clone();
         let cache_path = Arc::clone(&cache_path);
