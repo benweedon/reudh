@@ -25,3 +25,4 @@ kuchiki = "0.7.0"
 native-tls = "0.1.5"
 num_cpus = "1.8.0"
 tokio-core = "0.1.12"
+uuid = { version = "0.5.1", features = ["v4"] }

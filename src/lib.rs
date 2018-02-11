@@ -8,6 +8,7 @@ extern crate kuchiki;
 extern crate native_tls;
 extern crate num_cpus;
 extern crate tokio_core;
+extern crate uuid;
 
 mod errors;
 mod parse;
@@ -25,6 +26,7 @@ use hyper::Client;
 use hyper_tls::HttpsConnector;
 use indicatif::{ProgressBar, ProgressStyle};
 use tokio_core::reactor::Core;
+use uuid::Uuid;
 
 struct PageIter {
     curr_letter: char,
@@ -79,7 +81,7 @@ pub fn fetch(cache_dir: PathBuf) -> Result<(), Error> {
             let (mut core, client) = new_core_and_client().unwrap();
             for url in page_receiver {
                 let etyms = parse::etyms_from_letter_url(url, &client, &mut core).unwrap();
-                write_etyms_to_files(etyms, &*cache_dir).unwrap();
+                write_etyms_to_file(etyms, &*cache_dir).unwrap();
                 bar.inc(1);
             }
         })?;
@@ -95,10 +97,16 @@ pub fn fetch(cache_dir: PathBuf) -> Result<(), Error> {
     Ok(())
 }
 
-fn write_etyms_to_files(etyms: Vec<parse::Etym>, cache_dir: &PathBuf) -> Result<(), Error> {
-    for etym in etyms {
-        let mut file = File::create(cache_dir.join(PathBuf::from(&etym.word)))?;
+fn write_etyms_to_file(etyms: Vec<parse::Etym>, cache_dir: &PathBuf) -> Result<(), Error> {
+    if etyms.len() > 0 {
+        let filename = Uuid::new_v4().simple().to_string();
+        let mut file = File::create(cache_dir.join(PathBuf::from(filename)))?;
+        let mut etyms = etyms.iter();
+        let etym = etyms.next().unwrap();
         write!(file, "{}\n{}", etym.word, etym.definition)?;
+        for etym in etyms {
+            write!(file, "\n*\n{}\n{}", etym.word, etym.definition)?;
+        }
     }
     Ok(())
 }
