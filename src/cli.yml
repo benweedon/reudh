@@ -2,3 +2,10 @@ name: _
 subcommands:
     - fetch:
         about: Fetches etymology data from etymonline.com
+        args:
+            - cache:
+                short: c
+                long: cache
+                value_name: DIR
+                help: The location to fetch to
+                takes_value: true

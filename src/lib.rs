@@ -48,7 +48,7 @@ impl Iterator for PageIter {
     }
 }
 
-pub fn fetch(reudh_path: PathBuf) -> Result<(), Error> {
+pub fn fetch(cache_dir: PathBuf) -> Result<(), Error> {
     let bar = ProgressBar::new(26);
     bar.set_style(ProgressStyle::default_bar().template(
         "{prefix}\n[{elapsed_precise}/{eta_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
@@ -68,22 +68,20 @@ pub fn fetch(reudh_path: PathBuf) -> Result<(), Error> {
         bar_sender.send(bar);
     }));
 
-    if !reudh_path.exists() {
-        fs::create_dir(&reudh_path)?;
+    if cache_dir.exists() {
+        fs::remove_dir_all(&*cache_dir)?;
     }
-    let cache_path = Arc::new(reudh_path.join(PathBuf::from("cache")));
-    if cache_path.exists() {
-        fs::remove_dir_all(&*cache_path)?;
-    }
-    fs::create_dir(&*cache_path)?;
+    fs::create_dir(&*cache_dir)?;
+
+    let cache_dir = Arc::new(cache_dir);
     for i in 0..num_cpus::get() {
         let page_receiver = page_receiver.clone();
-        let cache_path = Arc::clone(&cache_path);
+        let cache_dir = Arc::clone(&cache_dir);
         let thread = thread::Builder::new().name(i.to_string()).spawn(move || {
             let (mut core, client) = new_core_and_client().unwrap();
             for url in page_receiver {
                 let etyms = parse::etyms_from_letter_url(url, &client, &mut core).unwrap();
-                write_etyms_to_files(etyms, &*cache_path).unwrap();
+                write_etyms_to_files(etyms, &*cache_dir).unwrap();
             }
         })?;
         threads.push(thread);
@@ -101,9 +99,9 @@ pub fn fetch(reudh_path: PathBuf) -> Result<(), Error> {
     Ok(())
 }
 
-fn write_etyms_to_files(etyms: Vec<parse::Etym>, cache_path: &PathBuf) -> Result<(), Error> {
+fn write_etyms_to_files(etyms: Vec<parse::Etym>, cache_dir: &PathBuf) -> Result<(), Error> {
     for etym in etyms {
-        let mut file = File::create(cache_path.join(PathBuf::from(&etym.word)))?;
+        let mut file = File::create(cache_dir.join(PathBuf::from(&etym.word)))?;
         write!(file, "{}\n{}", etym.word, etym.definition)?;
     }
     Ok(())
