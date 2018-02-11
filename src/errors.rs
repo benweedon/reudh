@@ -1,3 +1,4 @@
+use std::any;
 use std::error;
 use std::fmt;
 use std::io;
@@ -69,6 +70,14 @@ impl From<native_tls::Error> for Error {
     fn from(err: native_tls::Error) -> Error {
         Error {
             s: From::from(error::Error::description(&err)),
+        }
+    }
+}
+
+impl From<Box<any::Any + Send>> for Error {
+    fn from(_: Box<any::Any + Send>) -> Error {
+        Error {
+            s: From::from("Thread panicked"),
         }
     }
 }

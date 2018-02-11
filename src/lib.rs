@@ -16,11 +16,15 @@ use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::thread;
 
 use errors::Error;
 
+use hyper::Client;
+use hyper_tls::HttpsConnector;
 use indicatif::{ProgressBar, ProgressStyle};
+use tokio_core::reactor::Core;
 
 struct PageIter {
     curr_letter: char,
@@ -52,7 +56,6 @@ pub fn fetch(reudh_path: PathBuf) -> Result<(), Error> {
     bar.set_prefix("fetching...");
 
     let (page_sender, page_receiver) = chan::sync(1);
-    let (etym_sender, etym_receiver) = chan::sync(1);
     let (bar_sender, bar_receiver) = chan::sync(1);
 
     thread::spawn(move || {
@@ -63,25 +66,33 @@ pub fn fetch(reudh_path: PathBuf) -> Result<(), Error> {
         }
         bar_sender.send(bar);
     });
-    for _ in 0..num_cpus::get() {
+
+    if !reudh_path.exists() {
+        fs::create_dir(&reudh_path)?;
+    }
+    let cache_path = Arc::new(reudh_path.join(PathBuf::from("cache")));
+    if cache_path.exists() {
+        fs::remove_dir_all(&*cache_path)?;
+    }
+    fs::create_dir(&*cache_path)?;
+    let mut threads = vec![];
+    for i in 0..num_cpus::get() {
         let page_receiver = page_receiver.clone();
-        let etym_sender = etym_sender.clone();
-        thread::spawn(move || loop {
-            match page_receiver.recv() {
-                Some(url) => {
-                    let etyms = parse::etyms_from_letter_url(url).unwrap();
-                    for etym in etyms {
-                        etym_sender.send(etym);
-                    }
-                }
-                None => return,
+        let cache_path = Arc::clone(&cache_path);
+        let thread = thread::Builder::new().name(i.to_string()).spawn(move || {
+            let (mut core, client) = new_core_and_client().unwrap();
+            for url in page_receiver {
+                let etyms = parse::etyms_from_letter_url(url, &client, &mut core).unwrap();
+                write_etyms_to_files(etyms, &*cache_path).unwrap();
             }
-        });
+        })?;
+        threads.push(thread);
     }
     drop(page_receiver);
-    drop(etym_sender);
 
-    write_etyms_to_files(etym_receiver, reudh_path)?;
+    for thread in threads {
+        thread.join()?;
+    }
     let bar = bar_receiver
         .recv()
         .ok_or(Error::new("Progress bar not received"))?;
@@ -90,22 +101,20 @@ pub fn fetch(reudh_path: PathBuf) -> Result<(), Error> {
     Ok(())
 }
 
-fn write_etyms_to_files(
-    receiver: chan::Receiver<parse::Etym>,
-    reudh_path: PathBuf,
-) -> Result<(), Error> {
-    if !reudh_path.exists() {
-        fs::create_dir(&reudh_path)?;
-    }
-    let cache_path = reudh_path.join(PathBuf::from("cache"));
-    if cache_path.exists() {
-        fs::remove_dir_all(&cache_path)?;
-    }
-    fs::create_dir(&cache_path)?;
-
-    for etym in receiver {
+fn write_etyms_to_files(etyms: Vec<parse::Etym>, cache_path: &PathBuf) -> Result<(), Error> {
+    for etym in etyms {
         let mut file = File::create(cache_path.join(PathBuf::from(&etym.word)))?;
         write!(file, "{}\n{}", etym.word, etym.definition)?;
     }
     Ok(())
+}
+
+fn new_core_and_client() -> Result<(Core, parse::HttpsClient), Error> {
+    let core = Core::new()?;
+    let handle = core.handle();
+    let client = Client::configure()
+        .connector(HttpsConnector::new(4, &handle)?)
+        .build(&handle);
+
+    Ok((core, client))
 }

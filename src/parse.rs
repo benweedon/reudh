@@ -10,7 +10,7 @@ use hyper_tls::HttpsConnector;
 use kuchiki::{parse_html, NodeRef};
 use tokio_core::reactor::Core;
 
-type HttpsClient = Client<HttpsConnector<HttpConnector>, Body>;
+pub type HttpsClient = Client<HttpsConnector<HttpConnector>, Body>;
 
 #[derive(Debug)]
 pub struct Etym {
@@ -24,8 +24,11 @@ impl fmt::Display for Etym {
     }
 }
 
-pub fn etyms_from_letter_url(url: String) -> Result<Vec<Etym>, Error> {
-    let (mut core, client) = new_core_and_client()?;
+pub fn etyms_from_letter_url(
+    url: String,
+    client: &HttpsClient,
+    mut core: &mut Core,
+) -> Result<Vec<Etym>, Error> {
     let document = get_dom(url, &client, &mut core)?;
     let mut etyms = vec![];
     // Select all <a> tags with class beginning with "word--".
@@ -69,14 +72,4 @@ fn get_dom(url: String, client: &HttpsClient, core: &mut Core) -> Result<NodeRef
     });
     let document = core.run(work)?;
     Ok(document)
-}
-
-fn new_core_and_client() -> Result<(Core, HttpsClient), Error> {
-    let core = Core::new()?;
-    let handle = core.handle();
-    let client = Client::configure()
-        .connector(HttpsConnector::new(4, &handle)?)
-        .build(&handle);
-
-    Ok((core, client))
 }
