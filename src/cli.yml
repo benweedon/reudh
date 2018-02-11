@@ -9,3 +9,7 @@ subcommands:
                 value_name: DIR
                 help: The location to fetch to
                 takes_value: true
+            - force:
+                short: f
+                long: force
+                help: Overwrite the current cache if it exists

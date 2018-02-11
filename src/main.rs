@@ -34,6 +34,15 @@ fn main() {
         let default = default.to_str().unwrap();
         let cache_dir = matches.value_of("cache").unwrap_or(default);
         let cache_dir = PathBuf::from(cache_dir);
+
+        if !matches.is_present("force") && cache_dir.exists() {
+            eprintln!(
+                "Cache dir {} already exists. Use -f to overwrite it.",
+                cache_dir.to_str().unwrap()
+            );
+            process::exit(1);
+        }
+
         match reudh::fetch(cache_dir) {
             Ok(_) => println!("\nSuccess!"),
             Err(err) => eprintln!("\nFailure: {}", err),
