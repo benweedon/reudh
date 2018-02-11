@@ -2,6 +2,8 @@
 extern crate clap;
 extern crate reudh;
 
+use std::env;
+
 use clap::{App, AppSettings};
 
 fn main() {
@@ -15,7 +17,11 @@ fn main() {
         .get_matches();
 
     if let Some(_) = matches.subcommand_matches("fetch") {
-        match reudh::fetch() {
+        match reudh::fetch(
+            env::home_dir()
+                .expect("home directory not found")
+                .join(".reudh"),
+        ) {
             Ok(_) => println!("\nSuccess!"),
             Err(err) => eprintln!("\nFailure: {}", err),
         }

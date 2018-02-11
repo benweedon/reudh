@@ -14,8 +14,8 @@ type HttpsClient = Client<HttpsConnector<HttpConnector>, Body>;
 
 #[derive(Debug)]
 pub struct Etym {
-    word: String,
-    definition: String,
+    pub word: String,
+    pub definition: String,
 }
 
 impl fmt::Display for Etym {

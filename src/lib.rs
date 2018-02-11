@@ -12,6 +12,10 @@ extern crate tokio_core;
 mod errors;
 mod parse;
 
+use std::fs;
+use std::fs::File;
+use std::io::Write;
+use std::path::PathBuf;
 use std::thread;
 
 use errors::Error;
@@ -40,7 +44,7 @@ impl Iterator for PageIter {
     }
 }
 
-pub fn fetch() -> Result<(), Error> {
+pub fn fetch(reudh_path: PathBuf) -> Result<(), Error> {
     let bar = ProgressBar::new(26);
     bar.set_style(ProgressStyle::default_bar().template(
         "{prefix}\n[{elapsed_precise}/{eta_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
@@ -77,13 +81,31 @@ pub fn fetch() -> Result<(), Error> {
     drop(page_receiver);
     drop(etym_sender);
 
-    for etym in etym_receiver {
-        println!("{}\n---------------------\n\n", etym);
-    }
+    write_etyms_to_files(etym_receiver, reudh_path)?;
     let bar = bar_receiver
         .recv()
         .ok_or(Error::new("Progress bar not received"))?;
     bar.finish_and_clear();
 
+    Ok(())
+}
+
+fn write_etyms_to_files(
+    receiver: chan::Receiver<parse::Etym>,
+    reudh_path: PathBuf,
+) -> Result<(), Error> {
+    if !reudh_path.exists() {
+        fs::create_dir(&reudh_path)?;
+    }
+    let cache_path = reudh_path.join(PathBuf::from("cache"));
+    if cache_path.exists() {
+        fs::remove_dir_all(&cache_path)?;
+    }
+    fs::create_dir(&cache_path)?;
+
+    for etym in receiver {
+        let mut file = File::create(cache_path.join(PathBuf::from(&etym.word)))?;
+        write!(file, "{}\n{}", etym.word, etym.definition)?;
+    }
     Ok(())
 }
