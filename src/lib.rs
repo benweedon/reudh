@@ -49,23 +49,20 @@ impl Iterator for PageIter {
 }
 
 pub fn fetch(cache_dir: PathBuf) -> Result<(), Error> {
-    let bar = ProgressBar::new(26);
+    let bar = Arc::new(ProgressBar::new(26));
     bar.set_style(ProgressStyle::default_bar().template(
         "{prefix}\n[{elapsed_precise}/{eta_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
     ));
     bar.set_prefix("fetching...");
 
     let (page_sender, page_receiver) = chan::sync(1);
-    let (bar_sender, bar_receiver) = chan::sync(1);
 
     let mut threads = vec![];
     threads.push(thread::spawn(move || {
         let pages = PageIter::new();
         for url in pages {
             page_sender.send(url);
-            bar.inc(1);
         }
-        bar_sender.send(bar);
     }));
 
     if cache_dir.exists() {
@@ -77,11 +74,13 @@ pub fn fetch(cache_dir: PathBuf) -> Result<(), Error> {
     for i in 0..num_cpus::get() {
         let page_receiver = page_receiver.clone();
         let cache_dir = Arc::clone(&cache_dir);
+        let bar = Arc::clone(&bar);
         let thread = thread::Builder::new().name(i.to_string()).spawn(move || {
             let (mut core, client) = new_core_and_client().unwrap();
             for url in page_receiver {
                 let etyms = parse::etyms_from_letter_url(url, &client, &mut core).unwrap();
                 write_etyms_to_files(etyms, &*cache_dir).unwrap();
+                bar.inc(1);
             }
         })?;
         threads.push(thread);
@@ -91,9 +90,6 @@ pub fn fetch(cache_dir: PathBuf) -> Result<(), Error> {
     for thread in threads {
         thread.join()?;
     }
-    let bar = bar_receiver
-        .recv()
-        .ok_or(Error::new("Progress bar not received"))?;
     bar.finish_and_clear();
 
     Ok(())
