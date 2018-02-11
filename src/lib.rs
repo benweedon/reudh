@@ -79,11 +79,19 @@ pub fn fetch(cache_dir: PathBuf) -> Result<(), Error> {
         let bar = Arc::clone(&bar);
         let thread = thread::Builder::new().name(i.to_string()).spawn(move || {
             let (mut core, client) = new_core_and_client().unwrap();
+            let mut etyms = vec![];
             for url in page_receiver {
-                let etyms = parse::etyms_from_letter_url(url, &client, &mut core).unwrap();
-                write_etyms_to_file(etyms, &*cache_dir).unwrap();
+                let curr_etyms = parse::etyms_from_letter_url(url, &client, &mut core).unwrap();
+                etyms.extend(curr_etyms);
+                // Try to make files contain at least 20 etyms.
+                if etyms.len() >= 20 {
+                    write_etyms_to_file(&etyms, &*cache_dir).unwrap();
+                    etyms.clear();
+                }
                 bar.inc(1);
             }
+            // Write out the remaining etyms in the buffer.
+            write_etyms_to_file(&etyms, &*cache_dir).unwrap();
         })?;
         threads.push(thread);
     }
@@ -97,7 +105,7 @@ pub fn fetch(cache_dir: PathBuf) -> Result<(), Error> {
     Ok(())
 }
 
-fn write_etyms_to_file(etyms: Vec<parse::Etym>, cache_dir: &PathBuf) -> Result<(), Error> {
+fn write_etyms_to_file(etyms: &Vec<parse::Etym>, cache_dir: &PathBuf) -> Result<(), Error> {
     if etyms.len() > 0 {
         let filename = Uuid::new_v4().simple().to_string();
         let mut file = File::create(cache_dir.join(PathBuf::from(filename)))?;
