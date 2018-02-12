@@ -11,7 +11,7 @@ extern crate tokio_core;
 extern crate uuid;
 
 mod errors;
-mod parse;
+mod fetch;
 
 use std::fs;
 use std::fs::File;
@@ -95,7 +95,7 @@ pub fn fetch(cache_dir: PathBuf) -> Result<(), Error> {
             let (mut core, client) = new_core_and_client().unwrap();
             let mut etyms = vec![];
             for url in page_receiver {
-                let curr_etyms = parse::etyms_from_letter_url(url, &client, &mut core).unwrap();
+                let curr_etyms = fetch::etyms_from_letter_url(url, &client, &mut core).unwrap();
                 etyms.extend(curr_etyms);
                 // Try to make files contain at least 20 etyms.
                 if etyms.len() >= 20 {
@@ -123,7 +123,7 @@ pub fn fetch(cache_dir: PathBuf) -> Result<(), Error> {
     Ok(())
 }
 
-fn write_etyms_to_file(etyms: &Vec<parse::Etym>, cache_dir: &PathBuf) -> Result<(), Error> {
+fn write_etyms_to_file(etyms: &Vec<fetch::Etym>, cache_dir: &PathBuf) -> Result<(), Error> {
     if etyms.len() > 0 {
         let filename = Uuid::new_v4().simple().to_string();
         let mut file = File::create(cache_dir.join(PathBuf::from(filename)))?;
@@ -137,7 +137,7 @@ fn write_etyms_to_file(etyms: &Vec<parse::Etym>, cache_dir: &PathBuf) -> Result<
     Ok(())
 }
 
-fn new_core_and_client() -> Result<(Core, parse::HttpsClient), Error> {
+fn new_core_and_client() -> Result<(Core, fetch::HttpsClient), Error> {
     let core = Core::new()?;
     let handle = core.handle();
     let client = Client::configure()
