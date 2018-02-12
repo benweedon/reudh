@@ -2,6 +2,7 @@ use std::any;
 use std::error;
 use std::fmt;
 use std::io;
+use std::num;
 
 use hyper;
 use hyper::error::UriError;
@@ -78,6 +79,14 @@ impl From<Box<any::Any + Send>> for Error {
     fn from(_: Box<any::Any + Send>) -> Error {
         Error {
             s: From::from("Thread panicked"),
+        }
+    }
+}
+
+impl From<num::ParseIntError> for Error {
+    fn from(err: num::ParseIntError) -> Error {
+        Error {
+            s: From::from(error::Error::description(&err)),
         }
     }
 }

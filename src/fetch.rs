@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::fs::File;
@@ -35,14 +36,55 @@ impl fmt::Display for Etym {
 
 struct PageIter {
     curr_letter: char,
+    curr_page: u64,
+    letter_page_counts: HashMap<char, u64>,
 }
 impl PageIter {
     fn new() -> PageIter {
-        PageIter { curr_letter: 'a' }
+        PageIter {
+            curr_letter: 'a',
+            curr_page: 1,
+            letter_page_counts: HashMap::new(),
+        }
     }
 
     fn estimate_length(&self) -> u64 {
-        26
+        self.letter_page_counts.values().sum()
+    }
+
+    fn initialize(&mut self) -> Result<(), Error> {
+        let mut letter = 'a';
+        while letter <= 'z' {
+            let url = format!("https://www.etymonline.com/search?q={}", letter);
+            self.update_page_count(url, &letter)?;
+            letter = (letter as u8 + 1) as char;
+        }
+        Ok(())
+    }
+
+    fn update_page_count(&mut self, url: String, letter: &char) -> Result<(), Error> {
+        let (mut core, client) = new_core_and_client()?;
+        let document = get_dom(&url, &client, &mut core)?;
+        let selected = document.select(".ant-pagination-item")?;
+        let page_nums = selected
+            .map(|item| {
+                let elt = item.as_node()
+                    .as_element()
+                    .ok_or(Error::new("Link is not element"))?;
+                let attrs = elt.attributes.borrow();
+                let title = attrs
+                    .get("title")
+                    .ok_or(Error::new("title attribute not found"))?;
+                let title = title.parse()?;
+                Ok(title)
+            })
+            .collect::<Result<Vec<u64>, Error>>()?;
+        let num_pages = page_nums
+            .iter()
+            .max()
+            .ok_or(Error::new("maximum page number not found"))?;
+        self.letter_page_counts.insert(*letter, *num_pages);
+        Ok(())
     }
 }
 impl Iterator for PageIter {
@@ -50,8 +92,15 @@ impl Iterator for PageIter {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.curr_letter <= 'z' {
-            let url = format!("https://www.etymonline.com/search?q={}", self.curr_letter);
-            self.curr_letter = (self.curr_letter as u8 + 1) as char;
+            let url = format!(
+                "https://www.etymonline.com/search?q={}&page={}",
+                self.curr_letter, self.curr_page
+            );
+            self.curr_page += 1;
+            if self.curr_page > self.letter_page_counts[&self.curr_letter] {
+                self.curr_page = 1;
+                self.curr_letter = (self.curr_letter as u8 + 1) as char;
+            }
             Some(url)
         } else {
             None
@@ -69,7 +118,9 @@ pub fn fetch(cache_dir: PathBuf) -> Result<(), Error> {
     let (page_sender, page_receiver) = chan::sync(1);
 
     let mut threads = vec![];
-    let pages = Arc::new(Mutex::new(PageIter::new()));
+    let mut pages = PageIter::new();
+    pages.initialize()?;
+    let pages = Arc::new(Mutex::new(pages));
     {
         let pages = pages.clone();
         threads.push(thread::spawn(move || loop {
@@ -102,8 +153,8 @@ pub fn fetch(cache_dir: PathBuf) -> Result<(), Error> {
             for url in page_receiver {
                 let curr_etyms = etyms_from_letter_url(url, &client, &mut core).unwrap();
                 etyms.extend(curr_etyms);
-                // Try to make files contain at least 20 etyms.
-                if etyms.len() >= 20 {
+                // Try to make files contain at least 100 etyms.
+                if etyms.len() >= 100 {
                     write_etyms_to_file(&etyms, &*cache_dir).unwrap();
                     etyms.clear();
                 }
@@ -133,7 +184,7 @@ fn etyms_from_letter_url(
     client: &HttpsClient,
     mut core: &mut Core,
 ) -> Result<Vec<Etym>, Error> {
-    let document = get_dom(url, &client, &mut core)?;
+    let document = get_dom(&url, &client, &mut core)?;
     let mut etyms = vec![];
     // Select all <a> tags with class beginning with "word--".
     let selection = document.select("a[class^=word--]")?;
@@ -146,7 +197,7 @@ fn etyms_from_letter_url(
         let page = "https://www.etymonline.com".to_owned()
             + attrs
                 .get("href")
-                .ok_or(Error::new("href attribute not found on page"))?;
+                .ok_or(Error::new("href attribute not found on link"))?;
         let etym = etym_from_page(page, &client, &mut core)?;
         etyms.push(etym)
     }
@@ -154,7 +205,7 @@ fn etyms_from_letter_url(
 }
 
 fn etym_from_page(url: String, client: &HttpsClient, mut core: &mut Core) -> Result<Etym, Error> {
-    let document = get_dom(url, &client, &mut core)?;
+    let document = get_dom(&url, &client, &mut core)?;
     let word = document
         .select_first("h1[class^=word__name--]")?
         .text_contents();
@@ -181,7 +232,7 @@ fn write_etyms_to_file(etyms: &Vec<Etym>, cache_dir: &PathBuf) -> Result<(), Err
     Ok(())
 }
 
-fn get_dom(url: String, client: &HttpsClient, core: &mut Core) -> Result<NodeRef, Error> {
+fn get_dom(url: &String, client: &HttpsClient, core: &mut Core) -> Result<NodeRef, Error> {
     let work = client.get(url.parse()?).and_then(|res| {
         res.body().concat2().and_then(|body| {
             let document = parse_html().from_utf8().read_from(&mut &*body)?;
