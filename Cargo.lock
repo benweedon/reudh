@@ -666,7 +666,7 @@ dependencies = [
 
 [[package]]
 name = "reudh"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chan 0.1.21 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.29.4 (registry+https://github.com/rust-lang/crates.io-index)",
