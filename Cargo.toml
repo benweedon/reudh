@@ -1,6 +1,6 @@
 [package]
 name = "reudh"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Ben Weedon <ben.weedon@outlook.com>"]
 description = "A tool for parsing and indexing word etymologies from etymonline.com"
 repository = "https://github.com/benweedon/reudh"
