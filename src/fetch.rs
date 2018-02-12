@@ -52,12 +52,13 @@ impl PageIter {
         self.letter_page_counts.values().sum()
     }
 
-    fn initialize(&mut self) -> Result<(), Error> {
+    fn initialize(&mut self, bar: &ProgressBar) -> Result<(), Error> {
         let mut letter = 'a';
         while letter <= 'z' {
             let url = format!("https://www.etymonline.com/search?q={}", letter);
             self.update_page_count(url, &letter)?;
             letter = (letter as u8 + 1) as char;
+            bar.inc(1);
         }
         Ok(())
     }
@@ -109,17 +110,19 @@ impl Iterator for PageIter {
 }
 
 pub fn fetch(cache_dir: PathBuf) -> Result<(), Error> {
-    let bar = Arc::new(ProgressBar::new(0));
+    let bar = Arc::new(ProgressBar::new(26));
     bar.set_style(ProgressStyle::default_bar().template(
         "{prefix}\n[{elapsed_precise}/{eta_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
     ));
-    bar.set_prefix("fetching...");
+    bar.set_prefix("indexing...");
 
     let (page_sender, page_receiver) = chan::sync(1);
 
     let mut threads = vec![];
     let mut pages = PageIter::new();
-    pages.initialize()?;
+    pages.initialize(&*bar)?;
+    bar.set_position(0);
+    bar.set_prefix("fetching...");
     let pages = Arc::new(Mutex::new(pages));
     {
         let pages = pages.clone();
