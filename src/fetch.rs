@@ -4,7 +4,7 @@ use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 
 use errors::Error;
@@ -133,26 +133,18 @@ pub fn fetch(cache_dir: PathBuf) -> Result<(), Error> {
 
     let (page_sender, page_receiver) = chan::sync(1);
 
-    let mut threads = vec![];
     let mut pages = PageIter::new();
     pages.initialize(&*bar)?;
+    bar.set_length(pages.length());
     bar.set_position(0);
     bar.set_prefix("fetching...");
-    let pages = Arc::new(Mutex::new(pages));
-    {
-        let pages = pages.clone();
-        threads.push(thread::spawn(move || loop {
-            let url;
-            {
-                let mut pages = pages.lock().unwrap();
-                match pages.next() {
-                    Some(u) => url = u,
-                    None => break,
-                }
-            }
-            page_sender.send(url);
-        }));
-    }
+
+    let mut threads = vec![];
+    threads.push(thread::spawn(move || {
+        for page in pages {
+            page_sender.send(page);
+        }
+    }));
 
     if cache_dir.exists() {
         fs::remove_dir_all(&*cache_dir)?;
@@ -164,7 +156,6 @@ pub fn fetch(cache_dir: PathBuf) -> Result<(), Error> {
         let page_receiver = page_receiver.clone();
         let cache_dir = Arc::clone(&cache_dir);
         let bar = Arc::clone(&bar);
-        let pages = pages.clone();
         let thread = thread::Builder::new().name(i.to_string()).spawn(move || {
             let (mut core, client) = new_core_and_client().unwrap();
             let mut etyms = vec![];
@@ -175,10 +166,6 @@ pub fn fetch(cache_dir: PathBuf) -> Result<(), Error> {
                 if etyms.len() >= 100 {
                     write_etyms_to_file(&etyms, &*cache_dir).unwrap();
                     etyms.clear();
-                }
-                {
-                    let pages = pages.lock().unwrap();
-                    bar.set_length(pages.length());
                 }
             }
             // Write out the remaining etyms in the buffer.
