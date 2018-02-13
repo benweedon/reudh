@@ -38,6 +38,7 @@ struct PageIter {
     curr_letter: char,
     curr_page: u64,
     letter_page_counts: HashMap<char, u64>,
+    total_words: u64,
 }
 impl PageIter {
     fn new() -> PageIter {
@@ -45,11 +46,12 @@ impl PageIter {
             curr_letter: 'a',
             curr_page: 1,
             letter_page_counts: HashMap::new(),
+            total_words: 0,
         }
     }
 
-    fn estimate_length(&self) -> u64 {
-        self.letter_page_counts.values().sum()
+    fn length(&self) -> u64 {
+        self.total_words
     }
 
     fn initialize(&mut self, bar: &ProgressBar) -> Result<(), Error> {
@@ -66,6 +68,8 @@ impl PageIter {
     fn update_page_count(&mut self, url: String, letter: &char) -> Result<(), Error> {
         let (mut core, client) = new_core_and_client()?;
         let document = get_dom(&url, 5, &client, &mut core)?;
+
+        // Get number of pages
         let selected = document.select(".ant-pagination-item")?;
         let page_nums = selected
             .map(|item| {
@@ -85,6 +89,17 @@ impl PageIter {
             .max()
             .ok_or(Error::new("maximum page number not found".to_owned()))?;
         self.letter_page_counts.insert(*letter, *num_pages);
+
+        // Get number of words
+        let num_words: u64 = document
+            .select_first("div[class^=searchList__pageCount--]")?
+            .text_contents()
+            .split(" ")
+            .next()
+            .ok_or(Error::new("Failed to parse number of words".to_owned()))?
+            .parse()?;
+        self.total_words += num_words;
+
         Ok(())
     }
 }
@@ -154,7 +169,7 @@ pub fn fetch(cache_dir: PathBuf) -> Result<(), Error> {
             let (mut core, client) = new_core_and_client().unwrap();
             let mut etyms = vec![];
             for url in page_receiver {
-                let curr_etyms = etyms_from_letter_url(url, &client, &mut core).unwrap();
+                let curr_etyms = etyms_from_letter_url(url, &*bar, &client, &mut core).unwrap();
                 etyms.extend(curr_etyms);
                 // Try to make files contain at least 100 etyms.
                 if etyms.len() >= 100 {
@@ -163,9 +178,8 @@ pub fn fetch(cache_dir: PathBuf) -> Result<(), Error> {
                 }
                 {
                     let pages = pages.lock().unwrap();
-                    bar.set_length(pages.estimate_length());
+                    bar.set_length(pages.length());
                 }
-                bar.inc(1);
             }
             // Write out the remaining etyms in the buffer.
             write_etyms_to_file(&etyms, &*cache_dir).unwrap();
@@ -184,6 +198,7 @@ pub fn fetch(cache_dir: PathBuf) -> Result<(), Error> {
 
 fn etyms_from_letter_url(
     url: String,
+    bar: &ProgressBar,
     client: &HttpsClient,
     mut core: &mut Core,
 ) -> Result<Vec<Etym>, Error> {
@@ -202,7 +217,8 @@ fn etyms_from_letter_url(
                 .get("href")
                 .ok_or(Error::new("href attribute not found on link".to_owned()))?;
         let etym = etym_from_page(page, &client, &mut core)?;
-        etyms.push(etym)
+        etyms.push(etym);
+        bar.inc(1);
     }
     Ok(etyms)
 }
