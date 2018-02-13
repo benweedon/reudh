@@ -14,8 +14,8 @@ pub struct Error {
 }
 
 impl Error {
-    pub fn new(s: &str) -> Error {
-        Error { s: From::from(s) }
+    pub fn new(s: String) -> Error {
+        Error { s: s }
     }
 }
 

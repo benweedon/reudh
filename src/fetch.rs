@@ -12,7 +12,7 @@ use errors::Error;
 use chan;
 use futures::{Future, Stream};
 use html5ever::tendril::TendrilSink;
-use hyper::{Body, Client};
+use hyper::{Body, Client, StatusCode};
 use hyper::client::HttpConnector;
 use hyper_tls::HttpsConnector;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -65,17 +65,17 @@ impl PageIter {
 
     fn update_page_count(&mut self, url: String, letter: &char) -> Result<(), Error> {
         let (mut core, client) = new_core_and_client()?;
-        let document = get_dom(&url, &client, &mut core)?;
+        let document = get_dom(&url, 5, &client, &mut core)?;
         let selected = document.select(".ant-pagination-item")?;
         let page_nums = selected
             .map(|item| {
                 let elt = item.as_node()
                     .as_element()
-                    .ok_or(Error::new("Link is not element"))?;
+                    .ok_or(Error::new("Link is not element".to_owned()))?;
                 let attrs = elt.attributes.borrow();
                 let title = attrs
                     .get("title")
-                    .ok_or(Error::new("title attribute not found"))?;
+                    .ok_or(Error::new("title attribute not found".to_owned()))?;
                 let title = title.parse()?;
                 Ok(title)
             })
@@ -83,7 +83,7 @@ impl PageIter {
         let num_pages = page_nums
             .iter()
             .max()
-            .ok_or(Error::new("maximum page number not found"))?;
+            .ok_or(Error::new("maximum page number not found".to_owned()))?;
         self.letter_page_counts.insert(*letter, *num_pages);
         Ok(())
     }
@@ -187,7 +187,7 @@ fn etyms_from_letter_url(
     client: &HttpsClient,
     mut core: &mut Core,
 ) -> Result<Vec<Etym>, Error> {
-    let document = get_dom(&url, &client, &mut core)?;
+    let document = get_dom(&url, 5, &client, &mut core)?;
     let mut etyms = vec![];
     // Select all <a> tags with class beginning with "word--".
     let selection = document.select("a[class^=word--]")?;
@@ -195,12 +195,12 @@ fn etyms_from_letter_url(
         let elt = selected
             .as_node()
             .as_element()
-            .ok_or(Error::new("Link is not element"))?;
+            .ok_or(Error::new("Link is not element".to_owned()))?;
         let attrs = elt.attributes.borrow();
         let page = "https://www.etymonline.com".to_owned()
             + attrs
                 .get("href")
-                .ok_or(Error::new("href attribute not found on link"))?;
+                .ok_or(Error::new("href attribute not found on link".to_owned()))?;
         let etym = etym_from_page(page, &client, &mut core)?;
         etyms.push(etym)
     }
@@ -208,7 +208,7 @@ fn etyms_from_letter_url(
 }
 
 fn etym_from_page(url: String, client: &HttpsClient, mut core: &mut Core) -> Result<Etym, Error> {
-    let document = get_dom(&url, &client, &mut core)?;
+    let document = get_dom(&url, 5, &client, &mut core)?;
     let word = document
         .select_first("h1[class^=word__name--]")?
         .text_contents();
@@ -235,15 +235,41 @@ fn write_etyms_to_file(etyms: &Vec<Etym>, cache_dir: &PathBuf) -> Result<(), Err
     Ok(())
 }
 
-fn get_dom(url: &String, client: &HttpsClient, core: &mut Core) -> Result<NodeRef, Error> {
-    let work = client.get(url.parse()?).and_then(|res| {
-        res.body().concat2().and_then(|body| {
-            let document = parse_html().from_utf8().read_from(&mut &*body)?;
-            Ok(document)
-        })
-    });
-    let document = core.run(work)?;
-    Ok(document)
+fn get_dom(
+    url: &String,
+    num_retries: usize,
+    client: &HttpsClient,
+    core: &mut Core,
+) -> Result<NodeRef, Error> {
+    enum DocStatus {
+        Doc(NodeRef),
+        Status(StatusCode),
+    }
+    let mut first_status = StatusCode::Ok;
+    for _ in 0..num_retries {
+        let work = client.get(url.parse()?).and_then(|res| {
+            let status = res.status();
+            res.body().concat2().and_then(move |body| {
+                if status.is_success() {
+                    let document = parse_html().from_utf8().read_from(&mut &*body)?;
+                    Ok(DocStatus::Doc(document))
+                } else {
+                    Ok(DocStatus::Status(status))
+                }
+            })
+        });
+        let docstatus = core.run(work)?;
+        match docstatus {
+            DocStatus::Doc(document) => return Ok(document),
+            DocStatus::Status(status) => if first_status == StatusCode::Ok {
+                first_status = status
+            },
+        }
+    }
+    Err(Error::new(format!(
+        "Request failed with status: {}",
+        first_status.as_u16()
+    )))
 }
 
 fn new_core_and_client() -> Result<(Core, HttpsClient), Error> {
